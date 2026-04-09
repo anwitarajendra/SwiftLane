@@ -25,21 +25,36 @@ exports.createDelivery = (req, res) => {
     if (risk_score > 75) {
 
         let message = "";
-
+    
         if (risk_type === "customer_unavailable") {
-            message = `Your delivery will be out soon. Will you be available?
-
-1. Available
-2. Leave at gate
-3. Handover to watchman`;
+            message = `📦 SwiftLane Delivery Update
+    
+    Delivery ID: ${delivery.id}
+    
+    Your order is scheduled for delivery soon.
+    
+    Will you be available?
+    
+    1. Available
+    2. Leave at gate
+    3. Handover to watchman
+    4. Reschedule`;
         } 
         else if (risk_type === "delay") {
-            message = `Your delivery might be delayed by 2 hours.
-
-1. Continue anyway
-2. Reschedule`;
+            message = `⚠️ SwiftLane Delivery Alert
+    
+    Delivery ID: ${delivery.id}
+    
+    Your delivery may be delayed by ~2 hours due to traffic or weather conditions.
+    
+     How would you like to proceed?
+    
+    1. Continue anyway
+    2. Reschedule`;
         }
-
+    
+        console.log("Triggering WhatsApp for delivery:", delivery.id);
+    
         sendWhatsAppMessage(phone, message);
     }
 

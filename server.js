@@ -7,6 +7,7 @@ const app = express();
 
 app.use(cors());
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
 // Test route
 app.get('/', (req, res) => {
@@ -17,6 +18,10 @@ app.get('/', (req, res) => {
 const deliveryRoutes = require('./routes/deliveryRoutes');
 app.use('/api', deliveryRoutes);
 
+const webhookRoutes = require('./routes/webhookRoutes');
+app.use('/api', webhookRoutes);
+
 app.listen(5000, () => {
     console.log("Server running on port 5000");
 });
+
