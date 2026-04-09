@@ -21,13 +21,13 @@ exports.createDelivery = (req, res) => {
 
     deliveries.push(delivery);
 
-    // 🔥 WhatsApp Trigger Logic
+    // WhatsApp Trigger Logic
     if (risk_score > 75) {
 
         let message = "";
     
         if (risk_type === "customer_unavailable") {
-            message = `📦 SwiftLane Delivery Update
+            message = `SwiftLane Delivery Update
     
     Delivery ID: ${delivery.id}
     
@@ -41,7 +41,7 @@ exports.createDelivery = (req, res) => {
     4. Reschedule`;
         } 
         else if (risk_type === "delay") {
-            message = `⚠️ SwiftLane Delivery Alert
+            message = `SwiftLane Delivery Alert
     
     Delivery ID: ${delivery.id}
     
