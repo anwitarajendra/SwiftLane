@@ -5,8 +5,12 @@ import xgboost as xgb
 from fastapi import FastAPI, Depends, HTTPException, UploadFile, File
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
+from dotenv import load_dotenv
+
 from .database import get_db
 from . import models
+
+load_dotenv()
 
 app = FastAPI(title="ADA Sentinel - Risk Service")
 
@@ -15,7 +19,6 @@ risk_model = None
 @app.on_event("startup")
 def load_model():
     global risk_model
-
     model_path = os.path.join(os.path.dirname(__file__), "..", "risk_model.json")
     try:
         risk_model = xgb.XGBClassifier()
@@ -26,7 +29,7 @@ def load_model():
 
 
 def get_live_weather_signal(city="Bengaluru"):
-    API_KEY = "37864687e473aa357b9afa621f8082f0"
+    API_KEY = os.getenv("OPENWEATHER_API_KEY")
     url = f"http://api.openweathermap.org/data/2.5/weather?q={city}&appid={API_KEY}"
     try:
         response = requests.get(url, timeout=5).json()
@@ -40,7 +43,7 @@ def get_live_weather_signal(city="Bengaluru"):
         return 0.2, "Clear (Fallback)"
 
 def get_live_traffic_signal(lat, lon):
-    TOMTOM_KEY = "l9X1lfIqzbKCzrKnaDueMVMUWsxQyYRL" 
+    TOMTOM_KEY = os.getenv("TOMTOM_API_KEY") 
     url = f"https://api.tomtom.com/traffic/services/4/flowSegmentData/absolute/10/json?point={lat}%2C{lon}&key={TOMTOM_KEY}"
     
     try:
@@ -69,7 +72,6 @@ def get_recommended_message(category: str) -> str:
         "LOW": "Low risk. Delivery is on track.",
     }
     return messages.get(category, "No action required.")
-
 
 @app.post("/predict")
 def predict_risk(delivery_id: int, customer_id: int, db: Session = Depends(get_db)):
@@ -118,7 +120,6 @@ async def verify_delivery_photo(delivery_id: int, file: UploadFile = File(...), 
     delivery = db.query(models.Delivery).filter(models.Delivery.id == delivery_id).first()
     if not delivery:
         raise HTTPException(status_code=404, detail="Delivery not found.")
-
     delivery.status = "COMPLETED"
     delivery.proof_image_url = mock_url
     delivery.verification_score = 0.98
@@ -130,21 +131,19 @@ async def verify_delivery_photo(delivery_id: int, file: UploadFile = File(...), 
         "image_url": mock_url
     }
 
-
 @app.get("/deliveries/all")
 def get_all_deliveries(db: Session = Depends(get_db)):
     results = db.query(models.Delivery).all()
     output = []
     for d in results:
+        customer_name = d.customer.name if d.customer else "Unknown"
         output.append({
             "delivery_id": d.id,
             "status": d.status,
             "risk_score": d.risk_score,
             "customer_details": {
-                "name": d.customer.name,
-                "address": d.customer.address,
-                "lat": d.customer.latitude,
-                "lon": d.customer.longitude
+                "name": customer_name,
+                "address": d.customer.address if d.customer else "N/A"
             }
         })
     return {"status": "success", "count": len(output), "deliveries": output}
