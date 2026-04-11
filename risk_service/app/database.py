@@ -16,13 +16,13 @@ if DATABASE_URL is None:
 engine = create_engine(
     DATABASE_URL,
     echo=True,           
-    pool_pre_ping=True   
+    pool_pre_ping=True,
+    connect_args={"sslmode": "require"} 
 )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
-# 3. FASTAPI DEPENDENCY
 def get_db():
     db = SessionLocal()
     try:

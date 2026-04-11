@@ -3,19 +3,31 @@ import requests
 import numpy as np
 import xgboost as xgb
 from fastapi import FastAPI, Depends, HTTPException, UploadFile, File
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
+from dotenv import load_dotenv
+
 from .database import get_db
 from . import models
 
+load_dotenv()
+
 app = FastAPI(title="ADA Sentinel - Risk Service")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 risk_model = None
 
 @app.on_event("startup")
 def load_model():
     global risk_model
-
     model_path = os.path.join(os.path.dirname(__file__), "..", "risk_model.json")
     try:
         risk_model = xgb.XGBClassifier()
@@ -24,9 +36,8 @@ def load_model():
     except Exception as e:
         print(f"Error loading model: {e}")
 
-
 def get_live_weather_signal(city="Bengaluru"):
-    API_KEY = "37864687e473aa357b9afa621f8082f0"
+    API_KEY = os.getenv("OPENWEATHER_API_KEY")
     url = f"http://api.openweathermap.org/data/2.5/weather?q={city}&appid={API_KEY}"
     try:
         response = requests.get(url, timeout=5).json()
@@ -40,9 +51,8 @@ def get_live_weather_signal(city="Bengaluru"):
         return 0.2, "Clear (Fallback)"
 
 def get_live_traffic_signal(lat, lon):
-    TOMTOM_KEY = "l9X1lfIqzbKCzrKnaDueMVMUWsxQyYRL" 
+    TOMTOM_KEY = os.getenv("TOMTOM_API_KEY") 
     url = f"https://api.tomtom.com/traffic/services/4/flowSegmentData/absolute/10/json?point={lat}%2C{lon}&key={TOMTOM_KEY}"
-    
     try:
         response = requests.get(url, timeout=5).json()
         flow = response.get("flowSegmentData", {})
@@ -50,7 +60,6 @@ def get_live_traffic_signal(lat, lon):
         free_flow = flow.get("freeFlowSpeed", 30)
         
         if free_flow == 0: return 0.25
-        
         traffic_impact = max(0.0, min(1.0, 1 - (current_speed / free_flow)))
         return round(float(traffic_impact), 2)
     except Exception as e:
@@ -69,7 +78,6 @@ def get_recommended_message(category: str) -> str:
         "LOW": "Low risk. Delivery is on track.",
     }
     return messages.get(category, "No action required.")
-
 
 @app.post("/predict")
 def predict_risk(delivery_id: int, customer_id: int, db: Session = Depends(get_db)):
@@ -111,14 +119,43 @@ def predict_risk(delivery_id: int, customer_id: int, db: Session = Depends(get_d
         }
     }
 
+@app.get("/deliveries/all")
+def get_all_deliveries(db: Session = Depends(get_db)):
+    results = db.query(models.Delivery).all()
+    output = []
+
+    for d in results:
+        lat = d.customer.latitude if d.customer else d.latitude
+        lng = d.customer.longitude if d.customer else d.longitude
+        customer_name = d.customer.name if d.customer else "Unknown"
+        
+        output.append({
+            "delivery_id": d.id,
+            "status": d.status,
+            "risk_score": d.risk_score,
+            "coordinates": {
+                "lat": lat,
+                "lng": lng
+            },
+            "customer_details": {
+                "name": customer_name,
+                "address": d.customer.address if d.customer else "N/A"
+            }
+        })
+
+    return {
+        "status": "success", 
+        "count": len(output), 
+        "deliveries": output
+    }
+
 @app.post("/deliveries/{delivery_id}/verify")
 async def verify_delivery_photo(delivery_id: int, file: UploadFile = File(...), db: Session = Depends(get_db)):
     mock_url = f"https://sentinel-storage.com/proofs/{file.filename}"
-
     delivery = db.query(models.Delivery).filter(models.Delivery.id == delivery_id).first()
     if not delivery:
         raise HTTPException(status_code=404, detail="Delivery not found.")
-
+    
     delivery.status = "COMPLETED"
     delivery.proof_image_url = mock_url
     delivery.verification_score = 0.98
@@ -129,25 +166,6 @@ async def verify_delivery_photo(delivery_id: int, file: UploadFile = File(...), 
         "message": "Package detected. Delivery marked as COMPLETED.",
         "image_url": mock_url
     }
-
-
-@app.get("/deliveries/all")
-def get_all_deliveries(db: Session = Depends(get_db)):
-    results = db.query(models.Delivery).all()
-    output = []
-    for d in results:
-        output.append({
-            "delivery_id": d.id,
-            "status": d.status,
-            "risk_score": d.risk_score,
-            "customer_details": {
-                "name": d.customer.name,
-                "address": d.customer.address,
-                "lat": d.customer.latitude,
-                "lon": d.customer.longitude
-            }
-        })
-    return {"status": "success", "count": len(output), "deliveries": output}
 
 class CustomerCreate(BaseModel):
     name: str
