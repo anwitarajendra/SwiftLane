@@ -9,3 +9,6 @@ xgboost
 httpx
 redis
 requests
+numpy
+python-multipart 
+joblib
